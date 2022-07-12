@@ -1,44 +1,51 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
-name: Publish Docker image
+name: Build Master
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: 
+        - master
 
 jobs:
-  push_to_registry:
-    name: Push Docker image to Docker Hub
+  build:
     runs-on: ubuntu-latest
-    environment: 
-      name: DockerHub
     steps:
-      - name: Check out the repo
+      - name: Get current time
+        uses: 1466587594/get-current-time@v2
+        id: current-time
+        with:
+          format: YYYY-MM-DD--HH
+
+      - name: Checkout code
         uses: actions/checkout@v2
-      
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Cache Docker layers
+        uses: actions/cache@v2
         with:
-          username: ${{ secrets.USER_ID }}
-          password: ${{ secrets.PASSWORD }}
-      
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v3
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+        
+      - name: Login to DockerHub
+        uses: docker/login-action@v1 
         with:
-          images: irbyk/plexbot
-          flavor: |
-            latest=true
-          tags: |
-            type=ref,event=tag
-      
-      - name: Build and push Docker image
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push
         uses: docker/build-push-action@v2
         with:
-          context: .
+          platforms: linux/arm64,linux/amd64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VUE_APP_VERSION=v0.0.7-alpha-${{ steps.current-time.outputs.formattedTime }}
+          tags: |
+            hackmonker/m4b-tool
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
